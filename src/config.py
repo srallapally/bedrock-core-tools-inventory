@@ -11,15 +11,17 @@ def _account_id_from_sts(region):
 
 
 def load_config(now=None):
-    region = os.environ.get("TARGET_REGION")
-    if not region:
-        raise ValueError("TARGET_REGION is required")
+    # B-13: env var names and fallback chain per design §12
+    region = (
+        os.environ.get("REGION")
+        or os.environ.get("AWS_REGION")
+        or "us-east-1"
+    )
 
-    bucket = os.environ.get("OUTPUT_BUCKET")
-    if not bucket:
-        raise ValueError("OUTPUT_BUCKET is required")
+    # B-13: CORE_INVENTORY_BUCKET with default per design §12
+    bucket = os.environ.get("CORE_INVENTORY_BUCKET", "bedrock-core-inventory")
 
-    prefix = os.environ.get("OUTPUT_PREFIX", "runs/")
+    prefix = os.environ.get("OUTPUT_PREFIX", "bedrock-core-inventory/")
 
     account_id = os.environ.get("ACCOUNT_ID") or _account_id_from_sts(region)
 
@@ -27,7 +29,9 @@ def load_config(now=None):
         now = datetime.datetime.utcnow()
     timestamp = now.strftime("%Y%m%dT%H%M%SZ")
 
-    run_prefix = f"{prefix}{account_id}/{timestamp}/"
+    # B-14: path is bedrock-core-inventory/runs/<TIMESTAMP>/ per design §8.1
+    # account ID is not embedded in the path
+    run_prefix = f"{prefix}runs/{timestamp}/"
 
     return {
         "region": region,

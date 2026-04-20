@@ -1,7 +1,18 @@
 # src/iam_fetch.py
 import json
 import logging
+import os
+import time
 import urllib.parse
+
+from retry import with_retry
+
+
+def _inter_call_delay():
+    """Sleep between IAM read calls when IAM_INTER_CALL_DELAY_MS is set (§12)."""
+    ms = int(os.environ.get("IAM_INTER_CALL_DELAY_MS", "0"))
+    if ms > 0:
+        time.sleep(ms / 1000.0)
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +60,6 @@ def _parse_policy_doc(raw):
     return json.loads(urllib.parse.unquote(raw))
 
 
-# ---------------------------------------------------------------------------
-# List operations — list-level failures propagate to the caller
-# ---------------------------------------------------------------------------
-
 def list_roles(iam_client):
     return _paginate_iam(iam_client.list_roles, "Roles")
 
@@ -64,10 +71,6 @@ def list_users(iam_client):
 def list_groups(iam_client):
     return _paginate_iam(iam_client.list_groups, "Groups")
 
-
-# ---------------------------------------------------------------------------
-# Per-entity policy fetchers — per-document failures warn and continue
-# ---------------------------------------------------------------------------
 
 def fetch_inline_policies(iam_client, entity_type, entity_name):
     """
@@ -85,11 +88,14 @@ def fetch_inline_policies(iam_client, entity_type, entity_name):
     results = []
     for name in policy_names:
         try:
-            resp = get_method(**{entity_key: entity_name, "PolicyName": name})
+            resp = with_retry(
+                lambda n=name: get_method(**{entity_key: entity_name, "PolicyName": n})
+            )
             results.append({
                 "name": name,
                 "document": _parse_policy_doc(resp["PolicyDocument"]),
             })
+            _inter_call_delay()
         except Exception as exc:
             logger.warning(
                 "skipping inline policy %s on %s/%s: %s", name, entity_type, entity_name, exc
@@ -114,13 +120,17 @@ def fetch_attached_policies(iam_client, entity_type, entity_name):
         arn = policy["PolicyArn"]
         pol_name = policy["PolicyName"]
         try:
-            version_id = iam_client.get_policy(PolicyArn=arn)["Policy"]["DefaultVersionId"]
-            doc_resp = iam_client.get_policy_version(PolicyArn=arn, VersionId=version_id)
+            policy_meta = with_retry(lambda a=arn: iam_client.get_policy(PolicyArn=a))["Policy"]
+            version_id = policy_meta["DefaultVersionId"]
+            version_resp = with_retry(
+                lambda a=arn, v=version_id: iam_client.get_policy_version(PolicyArn=a, VersionId=v)
+            )
             results.append({
                 "name": pol_name,
                 "arn": arn,
-                "document": _parse_policy_doc(doc_resp["PolicyVersion"]["Document"]),
+                "document": _parse_policy_doc(version_resp["PolicyVersion"]["Document"]),
             })
+            _inter_call_delay()
         except Exception as exc:
             logger.warning(
                 "skipping managed policy %s (%s) on %s/%s: %s",

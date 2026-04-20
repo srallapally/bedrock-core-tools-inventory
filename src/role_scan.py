@@ -2,7 +2,7 @@
 import logging
 
 from iam_fetch import fetch_attached_policies, fetch_inline_policies
-from iam_policy import derive_source_tag, extract_model_bindings
+from iam_policy import derive_policy_ref, extract_model_bindings
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +15,19 @@ def _bindings_from_document(document, role_name, role_arn, policy_type, policy_n
                 "roleName": role_name,
                 "roleArn": role_arn,
                 "modelId": binding["modelId"],
+                "modelArn": binding["modelArn"],
+                "scopeType": binding["scopeType"],
+                "scopeResourceName": binding["scopeResourceName"],
+                "wildcard": binding["wildcard"],
                 "confidence": binding["confidence"],
-                "conditions": binding["conditions"],
-                "sourceTag": derive_source_tag(policy_type, policy_name),
+                "conditionJson": binding["conditionJson"],
+                "policyRef": derive_policy_ref(policy_type, policy_name),
+                "bindingOrigin": "DIRECT_ROLE_POLICY",
             })
     return candidates
 
 
 def scan_roles(iam_client, roles):
-    """
-    Scan each role's inline and attached policies for Bedrock model bindings.
-    Takes a pre-fetched list of role dicts. Per-role failures warn and continue.
-    Returns a flat list of binding candidates.
-    """
     candidates = []
     for role in roles:
         role_name = role["RoleName"]

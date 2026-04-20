@@ -24,7 +24,7 @@ def handler(event, context):
     iam = make_client("iam", cfg["region"])
     s3 = make_client("s3", cfg["region"])
 
-    models = collect_models(bedrock)
+    models = collect_models(bedrock, cfg["account_id"], cfg["region"])
 
     roles = list_roles(iam)
     role_candidates = scan_roles(iam, roles)
@@ -47,10 +47,8 @@ def handler(event, context):
         "manifest.json": manifest,
     }
 
-    uploaded, failed = write_artifacts(s3, cfg["bucket"], cfg["run_prefix"], payloads)
+    # write_artifacts raises ClientError on any upload failure — no try/except here.
+    # The Lambda runtime will catch the exception and mark the invocation failed.
+    write_artifacts(s3, cfg["bucket"], cfg["run_prefix"], payloads)
 
-    if failed:
-        names = [name for name, _ in failed]
-        raise RuntimeError(f"artifact upload failed: {names}")
-
-    return {"statusCode": 200, "uploaded": uploaded, "run_prefix": cfg["run_prefix"]}
+    return {"statusCode": 200, "run_prefix": cfg["run_prefix"]}

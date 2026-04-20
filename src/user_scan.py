@@ -2,9 +2,16 @@
 import logging
 
 from iam_fetch import fetch_attached_policies, fetch_inline_policies
-from iam_policy import derive_source_tag, extract_model_bindings
+from iam_policy import derive_policy_ref, extract_model_bindings
 
 logger = logging.getLogger(__name__)
+
+
+def _binding_origin(source_type):
+    """Map source entity type to the design §8.3 bindingOrigin enum value."""
+    if source_type == "group":
+        return "GROUP_INHERITED"
+    return "DIRECT_USER_POLICY"
 
 
 def _bindings_from_document(
@@ -24,9 +31,14 @@ def _bindings_from_document(
                 "sourcePrincipalName": source_name,
                 "sourcePrincipalArn": source_arn,
                 "modelId": binding["modelId"],
+                "modelArn": binding["modelArn"],
+                "scopeType": binding["scopeType"],
+                "scopeResourceName": binding["scopeResourceName"],
+                "wildcard": binding["wildcard"],
                 "confidence": binding["confidence"],
-                "conditions": binding["conditions"],
-                "sourceTag": derive_source_tag(policy_type, policy_name),
+                "conditionJson": binding["conditionJson"],
+                "policyRef": derive_policy_ref(policy_type, policy_name),
+                "bindingOrigin": _binding_origin(source_type),
             })
     return candidates
 
@@ -36,7 +48,6 @@ def _scan_entity_policies(
     principal_type, principal_name, principal_arn,
     source_type, source_name, source_arn,
 ):
-    """Scan inline and attached policies for source entity, stamping principal lineage."""
     candidates = []
     for policy in fetch_inline_policies(iam_client, source_type, source_name):
         candidates.extend(_bindings_from_document(
@@ -56,7 +67,6 @@ def _scan_entity_policies(
 
 
 def _list_user_groups(iam_client, user_name):
-    """Return all IAM groups the user belongs to, handling IsTruncated/Marker pagination."""
     groups = []
     kwargs = {"UserName": user_name}
     while True:
@@ -69,11 +79,6 @@ def _list_user_groups(iam_client, user_name):
 
 
 def scan_users(iam_client, users):
-    """
-    Scan each user's direct policies and group-inherited policies for Bedrock bindings.
-    Per-user failures warn and continue. Returns a flat list of binding candidates
-    with full principal and source lineage fields.
-    """
     candidates = []
     for user in users:
         user_name = user["UserName"]

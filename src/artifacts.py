@@ -29,22 +29,13 @@ def _copy_to_latest(s3_client, bucket, run_prefix):
 
 def write_artifacts(s3_client, bucket, run_prefix, payloads):
     """
-    Upload all artifacts to run_prefix. Promote to latest/ only if all succeed.
-    Returns (uploaded: list[str], failed: list[tuple[str, Exception]]).
+    Upload all artifacts to run_prefix then promote to latest/.
+    Any PutObject failure raises ClientError immediately — no partial writes to latest/.
+    Per design §5.4: fail-fast on first upload error; latest/ is never partially updated.
     """
-    uploaded = []
-    failed = []
-
     for name in ARTIFACT_NAMES:
         key = f"{run_prefix}{name}"
-        try:
-            _put(s3_client, bucket, key, payloads[name])
-            uploaded.append(name)
-        except Exception as exc:
-            logger.warning("failed to upload %s: %s", name, exc)
-            failed.append((name, exc))
+        _put(s3_client, bucket, key, payloads[name])
+        logger.info("uploaded %s", key)
 
-    if not failed:
-        _copy_to_latest(s3_client, bucket, run_prefix)
-
-    return uploaded, failed
+    _copy_to_latest(s3_client, bucket, run_prefix)
