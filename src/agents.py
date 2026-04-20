@@ -67,6 +67,7 @@ def collect_agents(client):
             agents.append({
                 "agentId": agent_id,
                 "agentName": agent_name,
+                "agentArn": summary.get("agentArn", ""),
                 "agentStatus": summary.get("agentStatus", ""),
                 "actionGroups": action_groups,
             })
