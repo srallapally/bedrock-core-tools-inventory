@@ -5,12 +5,12 @@ _SCHEMA_VERSION = "1.0"
 _PLATFORM = "aws-bedrock-core"
 
 
-def build_manifest(cfg, models, bindings, tool_credentials, principals,
+def build_manifest(cfg, models, bindings, agent_bindings, tool_credentials, principals,
                    extra_warnings=None, now=None):
     """
     Build the manifest.json payload from already-normalized in-memory data.
-    Counts and warnings are derived purely from the supplied lists.
-    extra_warnings: caller-supplied operational warnings (e.g. agent scan failures).
+    agent_bindings: flat list of agent binding records from scan_agent_bindings().
+    extra_warnings: caller-supplied operational warnings.
     now: injectable datetime for deterministic tests; defaults to utcnow().
     """
     if now is None:
@@ -26,6 +26,8 @@ def build_manifest(cfg, models, bindings, tool_credentials, principals,
         warnings.append("WILDCARD_BINDINGS_PRESENT")
     if conditional_count > 0:
         warnings.append("CONDITIONAL_BINDINGS_PRESENT")
+    if not agent_bindings:
+        warnings.append("NO_AGENT_BINDINGS_FOUND")
     if extra_warnings:
         warnings.extend(extra_warnings)
 
@@ -39,12 +41,14 @@ def build_manifest(cfg, models, bindings, tool_credentials, principals,
         "modelBindingCount": len(bindings),
         "wildcardBindingCount": wildcard_count,
         "conditionalBindingCount": conditional_count,
+        "agentBindingCount": len(agent_bindings),
         "agentToolCredentialCount": len(tool_credentials),
         "principalCount": len(principals),
         "warnings": warnings,
         "artifacts": {
             "models.json": len(models),
             "model-bindings.json": len(bindings),
+            "agent-bindings.json": len(agent_bindings),
             "agent-tool-credentials.json": len(tool_credentials),
             "principals.json": len(principals),
             "manifest.json": 1,

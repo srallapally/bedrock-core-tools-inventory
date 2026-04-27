@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 ARTIFACT_NAMES = [
     "models.json",
     "model-bindings.json",
+    "agent-bindings.json",
     "agent-tool-credentials.json",
     "principals.json",
     "manifest.json",

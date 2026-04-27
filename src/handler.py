@@ -10,6 +10,7 @@ from user_scan import scan_users
 from normalize import normalize_bindings
 from agents import collect_agents
 from tool_credentials import normalize_tool_credentials
+from agent_bindings import scan_agent_bindings, build_agent_bindings_payload
 from manifest import build_manifest
 from artifacts import write_artifacts
 
@@ -27,21 +28,26 @@ def handler(event, context):
     models = collect_models(bedrock, cfg["account_id"], cfg["region"])
 
     roles = list_roles(iam)
-    role_candidates = scan_roles(iam, roles)
-
     users = list_users(iam)
-    user_candidates = scan_users(iam, users)
 
+    role_candidates = scan_roles(iam, roles)
+    user_candidates = scan_users(iam, users)
     bindings, principals = normalize_bindings(role_candidates, user_candidates)
+
+    agent_bindings = scan_agent_bindings(iam, roles, users, cfg["account_id"])
+    agent_bindings_payload = build_agent_bindings_payload(
+        agent_bindings, cfg["account_id"], cfg["region"]
+    )
 
     agents = collect_agents(bedrock_agent)
     tool_credentials = normalize_tool_credentials(agents, cfg["account_id"], cfg["region"])
 
-    manifest = build_manifest(cfg, models, bindings, tool_credentials, principals)
+    manifest = build_manifest(cfg, models, bindings, agent_bindings, tool_credentials, principals)
 
     payloads = {
         "models.json": models,
         "model-bindings.json": bindings,
+        "agent-bindings.json": agent_bindings_payload,
         "agent-tool-credentials.json": tool_credentials,
         "principals.json": principals,
         "manifest.json": manifest,
