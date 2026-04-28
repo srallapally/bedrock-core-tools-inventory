@@ -1,5 +1,8 @@
 # src/tool_credentials.py
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _tc_id(agent_id, action_group_id):
@@ -49,10 +52,23 @@ def _api_schema_source(action_group):
     return None
 
 
-def normalize_tool_credentials(agents, account_id, region):
+# OPENICF-432: Fetch the IAM execution role ARN for a Lambda function.
+# Fails soft — returns None and logs a warning on any error.
+def _get_lambda_execution_role(lambda_client, lambda_arn):
+    try:
+        resp = lambda_client.get_function(FunctionName=lambda_arn)
+        return resp["Configuration"]["Role"]
+    except Exception as exc:
+        logger.warning("Failed to get execution role for Lambda %s: %s", lambda_arn, exc)
+        return None
+
+
+def normalize_tool_credentials(agents, account_id, region, lambda_client=None):
     """
     Normalize raw agent/action-group records into agent-tool-credentials.json entries.
     agents: output of collect_agents().
+    lambda_client: boto3 Lambda client — when provided, lambdaExecutionRoleArn is populated
+                   for LAMBDA_EXECUTION_ROLE action groups (OPENICF-432).
     Returns a flat list of credential records, one per action group across all agents.
     """
     records = []
@@ -62,6 +78,14 @@ def normalize_tool_credentials(agents, account_id, region):
         agent_service_role_arn = agent.get("agentServiceRoleArn", "")
         for ag in agent.get("actionGroups", []):
             credential_type, credential_ref = _classify_executor(ag)
+
+            # OPENICF-432: Resolve Lambda execution role for Lambda-backed action groups.
+            lambda_execution_role_arn = None
+            if credential_type == "LAMBDA_EXECUTION_ROLE" and lambda_client is not None:
+                lambda_execution_role_arn = _get_lambda_execution_role(
+                    lambda_client, credential_ref
+                )
+
             records.append({
                 "id": _tc_id(agent_id, ag["actionGroupId"]),
                 "agentId": agent_id,
@@ -76,5 +100,6 @@ def normalize_tool_credentials(agents, account_id, region):
                 "functionSchema": "functionSchema" in ag,
                 "accountId": account_id,
                 "region": region,
+                "lambdaExecutionRoleArn": lambda_execution_role_arn,
             })
     return records

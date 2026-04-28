@@ -24,6 +24,8 @@ def handler(event, context):
     bedrock_agent = make_client("bedrock-agent", cfg["region"])
     iam = make_client("iam", cfg["region"])
     s3 = make_client("s3", cfg["region"])
+    # OPENICF-432
+    lambda_client = make_client("lambda", cfg["region"])
 
     models = collect_models(bedrock, cfg["account_id"], cfg["region"])
 
@@ -40,7 +42,10 @@ def handler(event, context):
     )
 
     agents = collect_agents(bedrock_agent)
-    tool_credentials = normalize_tool_credentials(agents, cfg["account_id"], cfg["region"])
+    # OPENICF-432: pass lambda_client to populate lambdaExecutionRoleArn
+    tool_credentials = normalize_tool_credentials(
+        agents, cfg["account_id"], cfg["region"], lambda_client=lambda_client
+    )
 
     manifest = build_manifest(cfg, models, bindings, agent_bindings, tool_credentials, principals)
 
